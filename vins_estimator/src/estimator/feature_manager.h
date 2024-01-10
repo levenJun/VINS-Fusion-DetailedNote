@@ -109,7 +109,7 @@ class FeatureManager
     void removeBack();
     void removeFront(int frame_count);
     void removeOutlier(set<int> &outlierIndex);
-    list<FeaturePerId> feature;
+    list<FeaturePerId> feature; //subMap的所有的特征点?
     int last_track_num;
     double last_average_parallax;
     int new_feature_num;

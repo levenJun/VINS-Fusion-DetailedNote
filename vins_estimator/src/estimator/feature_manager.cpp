@@ -328,13 +328,13 @@ void FeatureManager::initFramePoseByPnP(int frameCnt, Vector3d Ps[], Matrix3d Rs
                 // 特征点一直被跟踪到了
                 if((int)it_per_id.feature_per_frame.size() >= index + 1)
                 {
-                    // 在第一帧IMU下的坐标
+                    // Pts在第一帧IMU下的坐标:特征点在 观测首帧下的描述,且转到IMU系下
                     Vector3d ptsInCam = ric[0] * (it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth) + tic[0];
-                    // 通过第一帧的位姿转到世界系 Twi
+                    // Pts通过第一帧的位姿转到世界系 Twi
                     Vector3d ptsInWorld = Rs[it_per_id.start_frame] * ptsInCam + Ps[it_per_id.start_frame];
 
-                    cv::Point3f point3d(ptsInWorld.x(), ptsInWorld.y(), ptsInWorld.z());
-                    cv::Point2f point2d(it_per_id.feature_per_frame[index].point.x(), it_per_id.feature_per_frame[index].point.y());
+                    cv::Point3f point3d(ptsInWorld.x(), ptsInWorld.y(), ptsInWorld.z());//Pts在世界系下坐标
+                    cv::Point2f point2d(it_per_id.feature_per_frame[index].point.x(), it_per_id.feature_per_frame[index].point.y());//Pts在当前帧需阿下z=1平面去畸变2d坐标
                     // 世界坐标
                     pts3D.push_back(point3d);
                     // 像素坐标
@@ -346,10 +346,12 @@ void FeatureManager::initFramePoseByPnP(int frameCnt, Vector3d Ps[], Matrix3d Rs
         Eigen::Vector3d PCam;
         // trans to w_T_cam
         // 前一帧位姿 Twc = Twi * Tic
+        //check: 上面的3d点都是imu坐标系下描述的, 为什么这里的初始Pose要用Camera系的
         RCam = Rs[frameCnt - 1] * ric[0];
         PCam = Rs[frameCnt - 1] * tic[0] + Ps[frameCnt - 1];
 
         // 3d-2d求解当前帧位姿，Twc
+        // 这里求解的目标是相机系下的世界Pose: 但是这个3d点集合是imu坐标系下的?
         if(solvePoseByPnP(RCam, PCam, pts2D, pts3D))
         {
             // trans to w_T_imu
@@ -373,26 +375,26 @@ void FeatureManager::triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vec
     for (auto &it_per_id : feature)
     {
         // 已经三角化过
-        if (it_per_id.estimated_depth > 0)
+        if (it_per_id.estimated_depth > 0)//check:其实在初始化阶段,可以尝试新观测反复三角化. (本函数后面已经有多帧三角化的逻辑了,只是逻辑bug走不到多帧三角化步骤!)
             continue;
 
-        // 双目三角化
+        // 双目三角化(双目点直接做双目三角化!)
         if(STEREO && it_per_id.feature_per_frame[0].is_stereo)
         {
             // 起始观测帧位姿 Tcw
             int imu_i = it_per_id.start_frame;
             Eigen::Matrix<double, 3, 4> leftPose;
-            Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[0];
+            Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[0];//起始帧左目下的Pose
             Eigen::Matrix3d R0 = Rs[imu_i] * ric[0];
-            leftPose.leftCols<3>() = R0.transpose();
+            leftPose.leftCols<3>() = R0.transpose();            //转换为左乘Pose
             leftPose.rightCols<1>() = -R0.transpose() * t0;
             //cout << "left pose " << leftPose << endl;
 
             // 起始观测帧位姿，右目 Tcw
             Eigen::Matrix<double, 3, 4> rightPose;
-            Eigen::Vector3d t1 = Ps[imu_i] + Rs[imu_i] * tic[1];
+            Eigen::Vector3d t1 = Ps[imu_i] + Rs[imu_i] * tic[1];//起始帧右目下的Pose
             Eigen::Matrix3d R1 = Rs[imu_i] * ric[1];
-            rightPose.leftCols<3>() = R1.transpose();
+            rightPose.leftCols<3>() = R1.transpose();           //转换为左乘Pose
             rightPose.rightCols<1>() = -R1.transpose() * t1;
             //cout << "right pose " << rightPose << endl;
 
@@ -405,7 +407,7 @@ void FeatureManager::triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vec
             //cout << "point1 " << point1.transpose() << endl;
 
             // SVD计算三角化点
-            triangulatePoint(leftPose, rightPose, point0, point1, point3d);
+            triangulatePoint(leftPose, rightPose, point0, point1, point3d);//直接双目三角化
             // 相机点
             Eigen::Vector3d localPoint;
             localPoint = leftPose.leftCols<3>() * point3d + leftPose.rightCols<1>();
@@ -423,7 +425,7 @@ void FeatureManager::triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vec
             continue;
         }
         // 单目三角化，观测帧至少要2帧
-        else if(it_per_id.feature_per_frame.size() > 1)
+        else if(it_per_id.feature_per_frame.size() > 1)//check:单目三角化最好至少观测3帧吧
         {
             // 起始观测帧位姿 Tcw
             int imu_i = it_per_id.start_frame;

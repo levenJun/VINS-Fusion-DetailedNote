@@ -72,7 +72,7 @@ void FeatureTracker::setMask()
     mask = cv::Mat(row, col, CV_8UC1, cv::Scalar(255));
 
     // prefer to keep features that are tracked for long time
-    vector<pair<int, pair<cv::Point2f, int>>> cnt_pts_id;
+    vector<pair<int, pair<cv::Point2f, int>>> cnt_pts_id;//{特征点追踪次数,{特征点坐标，特征点id}}
 
     for (unsigned int i = 0; i < cur_pts.size(); i++)
         cnt_pts_id.push_back(make_pair(track_cnt[i], make_pair(cur_pts[i], ids[i])));
@@ -140,6 +140,7 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
     */
     cur_pts.clear();
 
+    // 1）LK光流追踪
     if (prev_pts.size() > 0)
     {
         TicToc t_o;
@@ -206,6 +207,7 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
     for (auto &n : track_cnt)
         n++;
 
+    // 2)补点:cv::goodFeaturesToTrack
     if (1)
     {
         // 对于前后帧用LK光流跟踪到的匹配特征点，计算基础矩阵，进一步剔除outlier点
@@ -227,7 +229,7 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
             if (mask.type() != CV_8UC1)
                 cout << "mask type wrong " << endl;
             // 精确角点提取
-            cv::goodFeaturesToTrack(cur_img, n_pts, MAX_CNT - cur_pts.size(), 0.01, MIN_DIST, mask);
+            cv::goodFeaturesToTrack(cur_img, n_pts, MAX_CNT - cur_pts.size(), 0.01, MIN_DIST, mask);    //和ORB重要区别1:ORB是用cv::FAST来补点
         }
         else
             n_pts.clear();
@@ -248,7 +250,7 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
     // 计算当前帧归一化相机平面特征点在x、y方向上的移动速度
     pts_velocity = ptsVelocity(ids, cur_un_pts, cur_un_pts_map, prev_un_pts_map);
 
-    // 双目
+    // 34)双目LK光追:(不作补点)
     if(!_img1.empty() && stereo_cam)
     {
         ids_right.clear();
@@ -264,7 +266,7 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
             vector<float> err;
             // cur left ---- cur right
             // 当前帧左图-右图之间进行特征点匹配
-            cv::calcOpticalFlowPyrLK(cur_img, rightImg, cur_pts, cur_right_pts, status, err, cv::Size(21, 21), 3);
+            cv::calcOpticalFlowPyrLK(cur_img, rightImg, cur_pts, cur_right_pts, status, err, cv::Size(21, 21), 3);//和ORB重要区别2:右图特征点直接是左右图光追匹配得到,不是单独追踪的!
             // reverse check cur right ---- cur left
             // 同样的反向来一次
             if(FLOW_BACK)
@@ -315,6 +317,7 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
     for(size_t i = 0; i < cur_pts.size(); i++)
         prevLeftPtsMap[ids[i]] = cur_pts[i];
 
+    //5)汇总特征Track结果{id: [cid, {z=1平面坐标,带畸变像素坐标,z=1平面平移速度},{cid, 右图上匹配的特征(如果有)}] }
     // 添加当前帧特征点（归一化相机平面坐标，像素坐标，归一化相机平面移动速度）
     map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> featureFrame;
     for (size_t i = 0; i < ids.size(); i++)
@@ -472,7 +475,7 @@ vector<cv::Point2f> FeatureTracker::undistortedPts(vector<cv::Point2f> &pts, cam
         Eigen::Vector2d a(pts[i].x, pts[i].y);
         Eigen::Vector3d b;
         // 像素点计算归一化相机平面点，带畸变校正
-        cam->liftProjective(a, b);
+        cam->liftProjective(a, b);          //此处就是需要作鱼眼相机矫正的地方
         // 归一化相机平面点
         un_pts.push_back(cv::Point2f(b.x() / b.z(), b.y() / b.z()));
     }

@@ -208,7 +208,7 @@ void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1)
     // 添加一帧特征点，处理
     if(MULTIPLE_THREAD)  
     {     
-        if(inputImageCnt % 2 == 0)
+        if(inputImageCnt % 2 == 0)//多线程下,隔帧处理!
         {
             mBuf.lock();
             featureBuf.push(make_pair(t, featureFrame));
@@ -240,7 +240,7 @@ void Estimator::inputIMU(double t, const Vector3d &linearAcceleration, const Vec
     //printf("input imu with time %f \n", t);
     mBuf.unlock();
 
-    if (solver_flag == NON_LINEAR)
+    if (solver_flag == NON_LINEAR)//solver_flag只有INITIAL和NON_LINEAR两种状态
     {
         mPropagate.lock();
         // IMU预测状态，更新QPV
@@ -369,7 +369,7 @@ void Estimator::processMeasurements()
                         dt = curTime - accVector[i - 1].first;
                     else
                         dt = accVector[i].first - accVector[i - 1].first;
-                    processIMU(accVector[i].first, dt, accVector[i].second, gyrVector[i].second);
+                    processIMU(accVector[i].first, dt, accVector[i].second, gyrVector[i].second);//1)预积分迭代;2)绝对积分预测
                 }
             }
             mProcess.lock();
@@ -543,7 +543,7 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
     // 重置预积分器
     tmp_pre_integration = new IntegrationBase{acc_0, gyr_0, Bas[frame_count], Bgs[frame_count]};
 
-    if(ESTIMATE_EXTRINSIC == 2)
+    if(ESTIMATE_EXTRINSIC == 2)//标定IMU和Camera间的外参
     {
         ROS_INFO("calibrating extrinsic param, rotation movement is needed");
         if (frame_count != 0)
@@ -620,12 +620,16 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
         }
 
         // stereo + IMU initilization
-        // 双目+IMU系统初始化
+        // 双目+IMU系统初始化:
+        // 在满窗前,就是纯视觉PnP估计Pose,并用PnP的Pose来三角化地图点
         if(STEREO && USE_IMU)
         {
             f_manager.initFramePoseByPnP(frame_count, Ps, Rs, tic, ric);
+            //双目三角化,单目三角化
+            //check: 多帧三角化逻辑实现了但是未能进入
+            //check: 当前帧新三角化的点,用的是上面PNP的位姿来求的,不太准吧!
             f_manager.triangulate(frame_count, Ps, Rs, tic, ric);
-            if (frame_count == WINDOW_SIZE)
+            if (frame_count == WINDOW_SIZE)//满窗后才进行正式的批量初始化优化!
             {
                 map<double, ImageFrame>::iterator frame_it;
                 int i = 0;
@@ -645,7 +649,7 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
                 optimization();
                 // 用优化后的当前帧位姿更新IMU积分的基础位姿，用于展示IMU轨迹
                 updateLatestStates();
-                solver_flag = NON_LINEAR;
+                solver_flag = NON_LINEAR; //check,满窗初始化执行后也没有检查成功失败直接就认为完成初始化了!
                 // 移动滑窗，更新特征点的观测帧集合、观测帧索引（在滑窗中的位置）、首帧观测帧和深度值，删除没有观测帧的特征点
                 slideWindow();
                 ROS_INFO("Initialization finish!");
@@ -1257,6 +1261,8 @@ bool Estimator::failureDetection()
 
 /**
  * 滑窗执行Ceres优化，边缘化，更新滑窗内图像帧的状态（位姿、速度、偏置、外参、逆深度、相机与IMU时差）
+ * //分支1:初始化阶段,
+ * //分支2:正常VIO阶段
 */
 void Estimator::optimization()
 {
@@ -1428,7 +1434,7 @@ void Estimator::optimization()
     double2vector();
     //printf("frame_count: %d \n", frame_count);
 
-    if(frame_count < WINDOW_SIZE)
+    if(frame_count < WINDOW_SIZE)   //只有纯双目初始化才可能进入此条件,其他情况初始化都要求满帧
         return;
     
     /**
