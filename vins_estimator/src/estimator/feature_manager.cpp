@@ -70,13 +70,13 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vec
     for (auto &id_pts : image)
     {
         // 左目对应特征点
-        FeaturePerFrame f_per_fra(id_pts.second[0].second, td);
-        assert(id_pts.second[0].first == 0);
+        FeaturePerFrame f_per_fra(id_pts.second[0].second, td);//fix, 双目光流
+        assert(id_pts.second[0].first == 0);//fix, 双目光流
         if(id_pts.second.size() == 2)
         {
             // 右目对应特征点
-            f_per_fra.rightObservation(id_pts.second[1].second);
-            assert(id_pts.second[1].first == 1);
+            f_per_fra.rightObservation(id_pts.second[1].second);//fix, 双目光流
+            assert(id_pts.second[1].first == 1);//fix, 双目光流
         }
 
         // 特征id
@@ -156,9 +156,9 @@ vector<pair<Vector3d, Vector3d>> FeatureManager::getCorresponding(int frame_coun
             int idx_l = frame_count_l - it.start_frame;
             int idx_r = frame_count_r - it.start_frame;
 
-            a = it.feature_per_frame[idx_l].point;
+            a = it.feature_per_frame[idx_l].point;//fix, 双目光流
 
-            b = it.feature_per_frame[idx_r].point;
+            b = it.feature_per_frame[idx_r].point;//fix, 双目光流
             
             corres.push_back(make_pair(a, b));
         }
@@ -312,6 +312,7 @@ bool FeatureManager::solvePoseByPnP(Eigen::Matrix3d &R, Eigen::Vector3d &P,
  * 1、世界坐标-像素坐标
  * 2、用前一帧位姿初始化当前帧位姿
 */
+//fix:双目光流,只支持左目的计算
 void FeatureManager::initFramePoseByPnP(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vector3d tic[], Matrix3d ric[])
 {
 
@@ -427,6 +428,7 @@ void FeatureManager::triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vec
         // 单目三角化，观测帧至少要2帧
         else if(it_per_id.feature_per_frame.size() > 1)//check:单目三角化最好至少观测3帧吧
         {
+            //fix:双目光流. 具体的pose要根据是在左目还是右目上的观测具体得到!
             // 起始观测帧位姿 Tcw
             int imu_i = it_per_id.start_frame;
             Eigen::Matrix<double, 3, 4> leftPose;
@@ -446,8 +448,8 @@ void FeatureManager::triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vec
             // 取两帧对应的归一化相机平面点
             Eigen::Vector2d point0, point1;
             Eigen::Vector3d point3d;
-            point0 = it_per_id.feature_per_frame[0].point.head(2);
-            point1 = it_per_id.feature_per_frame[1].point.head(2);
+            point0 = it_per_id.feature_per_frame[0].point.head(2);//fix:双目光流
+            point1 = it_per_id.feature_per_frame[1].point.head(2);//fix:双目光流
 
             // SVD计算三角化点
             triangulatePoint(leftPose, rightPose, point0, point1, point3d);
@@ -491,6 +493,7 @@ void FeatureManager::triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vec
         {
             imu_j++;
             // 当前观测帧位姿 Twc
+            //fix:双目光流. 具体的pose要根据是在左目还是右目上的观测具体得到!
             Eigen::Vector3d t1 = Ps[imu_j] + Rs[imu_j] * tic[0];
             Eigen::Matrix3d R1 = Rs[imu_j] * ric[0];
             // 与首帧观测帧之间的位姿变换 Tij
@@ -561,7 +564,7 @@ void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3
         else
         {
             // 首帧观测帧的归一化相机点
-            Eigen::Vector3d uv_i = it->feature_per_frame[0].point;  
+            Eigen::Vector3d uv_i = it->feature_per_frame[0].point;  //fix:双目光流.
             // 删除当前marg掉的观测帧
             it->feature_per_frame.erase(it->feature_per_frame.begin());
             // 如果观测帧少于2个，删掉该点
@@ -574,8 +577,8 @@ void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3
             {
                 // estimated_depth是在首帧观测帧下的深度值，现在更新到后一帧下
                 Eigen::Vector3d pts_i = uv_i * it->estimated_depth;
-                Eigen::Vector3d w_pts_i = marg_R * pts_i + marg_P;
-                Eigen::Vector3d pts_j = new_R.transpose() * (w_pts_i - new_P);
+                Eigen::Vector3d w_pts_i = marg_R * pts_i + marg_P;  //fix:双目光流.
+                Eigen::Vector3d pts_j = new_R.transpose() * (w_pts_i - new_P);//fix:双目光流.
                 double dep_j = pts_j(2);
                 if (dep_j > 0)
                     it->estimated_depth = dep_j;
@@ -645,6 +648,7 @@ void FeatureManager::removeFront(int frame_count)
  * @param it_per_id     某个特征点
  * @param frame_count   当前帧在滑窗中的索引
 */
+//fix:双目光流: 计算左目对应视差or计算右目对应视差:需要对应上!!!!!!!1
 double FeatureManager::compensatedParallax2(const FeaturePerId &it_per_id, int frame_count)
 {
     //check the second last frame is keyframe or not

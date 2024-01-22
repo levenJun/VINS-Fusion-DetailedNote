@@ -264,7 +264,7 @@ void pubPointCloud(const Estimator &estimator, const std_msgs::Header &header)
         if (it_per_id.start_frame > WINDOW_SIZE * 3.0 / 4.0 || it_per_id.solve_flag != 1)
             continue;
         int imu_i = it_per_id.start_frame;
-        Vector3d pts_i = it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth;
+        Vector3d pts_i = it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth;//fix, 双目光流, 如果起始点是右目要从右目来计算
         Vector3d w_pts_i = estimator.Rs[imu_i] * (estimator.ric[0] * pts_i + estimator.tic[0]) + estimator.Ps[imu_i];
 
         geometry_msgs::Point32 p;
@@ -293,7 +293,7 @@ void pubPointCloud(const Estimator &estimator, const std_msgs::Header &header)
             && it_per_id.solve_flag == 1 )
         {
             int imu_i = it_per_id.start_frame;
-            Vector3d pts_i = it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth;
+            Vector3d pts_i = it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth;//fix, 双目光流, 如果起始点是右目要从右目来计算
             Vector3d w_pts_i = estimator.Rs[imu_i] * (estimator.ric[0] * pts_i + estimator.tic[0]) + estimator.Ps[imu_i];
 
             geometry_msgs::Point32 p;
@@ -392,7 +392,7 @@ void pubKeyframe(const Estimator &estimator)
             {
 
                 int imu_i = it_per_id.start_frame;
-                Vector3d pts_i = it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth;
+                Vector3d pts_i = it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth;//fix, 双目光流, 如果起始点是右目要从右目来计算
                 Vector3d w_pts_i = estimator.Rs[imu_i] * (estimator.ric[0] * pts_i + estimator.tic[0])
                                       + estimator.Ps[imu_i];
                 geometry_msgs::Point32 p;
@@ -403,7 +403,7 @@ void pubKeyframe(const Estimator &estimator)
 
                 int imu_j = WINDOW_SIZE - 2 - it_per_id.start_frame;
                 sensor_msgs::ChannelFloat32 p_2d;
-                p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].point.x());
+                p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].point.x());//fix, 双目光流, 如果起始点是右目要从右目来计算
                 p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].point.y());
                 p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].uv.x());
                 p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].uv.y());

@@ -59,6 +59,12 @@ class FeaturePerFrame
     // 归一化相机平面速度
     Vector2d velocity, velocityRight;
     bool is_stereo;
+    int mainCid = -1; //本观测点主相机的id:单目左-0,单目右-1;双目-0;
+                      //is_stereo=false且mainCid=0:只有左目参数有效
+                      //is_stereo=false且mainCid=1:只有右目参数有效
+                      //is_stereo=true:左右目参数都有效
+                      //mainCid=0, 特征点深度基于point描述
+                      //mainCid=1, 特征点深度基于pointRight描述
 };
 
 class FeaturePerId

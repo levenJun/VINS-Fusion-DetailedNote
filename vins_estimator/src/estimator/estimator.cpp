@@ -520,7 +520,7 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
     ROS_DEBUG("new image coming ------------------------------------------");
     ROS_DEBUG("Adding feature points %lu", image.size());
     // 添加特征点记录，并检查当前帧是否为关键帧，如果是，marg最早的一帧；否则marg当前帧的前一帧
-    if (f_manager.addFeatureCheckParallax(frame_count, image, td))
+    if (f_manager.addFeatureCheckParallax(frame_count, image, td))//fix, 双目光流
     {
         marginalization_flag = MARGIN_OLD;
         //printf("keyframe\n");
@@ -549,7 +549,7 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
         if (frame_count != 0)
         {
             // 提取前一帧与当前帧的匹配点
-            vector<pair<Vector3d, Vector3d>> corres = f_manager.getCorresponding(frame_count - 1, frame_count);
+            vector<pair<Vector3d, Vector3d>> corres = f_manager.getCorresponding(frame_count - 1, frame_count);//fix, 双目光流:只取左目的前后帧匹配点
             Matrix3d calib_ric;
             /**
              * 在线标定外参旋转
@@ -624,11 +624,11 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
         // 在满窗前,就是纯视觉PnP估计Pose,并用PnP的Pose来三角化地图点
         if(STEREO && USE_IMU)
         {
-            f_manager.initFramePoseByPnP(frame_count, Ps, Rs, tic, ric);
+            f_manager.initFramePoseByPnP(frame_count, Ps, Rs, tic, ric);//fix:双目光流,只支持左目的pnp
             //双目三角化,单目三角化
             //check: 多帧三角化逻辑实现了但是未能进入
             //check: 当前帧新三角化的点,用的是上面PNP的位姿来求的,不太准吧!
-            f_manager.triangulate(frame_count, Ps, Rs, tic, ric);
+            f_manager.triangulate(frame_count, Ps, Rs, tic, ric);//fix:双目光流. 具体的pose要根据是在左目还是右目上的观测具体得到!
             if (frame_count == WINDOW_SIZE)//满窗后才进行正式的批量初始化优化!
             {
                 map<double, ImageFrame>::iterator frame_it;
@@ -813,7 +813,7 @@ bool Estimator::initialStructure()
         {
             imu_j++;
             // 特征点归一化相机平面点
-            Vector3d pts_j = it_per_frame.point;
+            Vector3d pts_j = it_per_frame.point;//fix:双目光流,注意保证单目
             tmp_feature.observation.push_back(make_pair(imu_j, Eigen::Vector2d{pts_j.x(), pts_j.y()}));
         }
         sfm_f.push_back(tmp_feature);
@@ -1348,6 +1348,12 @@ void Estimator::optimization()
     int f_m_cnt = 0;
     int feature_index = -1;
     // 遍历特征点
+    //fix, 双目光流
+    //帧内视觉重投影:双目(ok)
+    //前后帧视觉重投影: pre为左目,cur为左目(ok)
+    //前后帧视觉重投影: pre为左目,cur为右目(ok)
+    //前后帧视觉重投影: pre为右目,cur为左目(not)
+    //前后帧视觉重投影: pre为右目,cur为右目(not)
     for (auto &it_per_id : f_manager.feature)
     {
         it_per_id.used_num = it_per_id.feature_per_frame.size();
@@ -1483,6 +1489,12 @@ void Estimator::optimization()
         }
 
         // 滑窗首帧与其他帧之间的视觉重投影残差
+        //fix, 双目光流
+        //帧内视觉重投影:双目(ok)
+        //前后帧视觉重投影: pre为左目,cur为左目(ok)
+        //前后帧视觉重投影: pre为左目,cur为右目(ok)
+        //前后帧视觉重投影: pre为右目,cur为左目(not)
+        //前后帧视觉重投影: pre为右目,cur为右目(not)        
         {
             // 遍历特征点
             int feature_index = -1;
@@ -1827,6 +1839,7 @@ void Estimator::getPoseInWorldFrame(int index, Eigen::Matrix4d &T)
 /**
  * 用当前帧与前一帧位姿变换，估计下一帧位姿，初始化下一帧特征点的位置
 */
+//fix:双目光流, 目前只支持预测左目的特征位置
 void Estimator::predictPtsInNextFrame()
 {
     //printf("predict pts in next frame\n");
@@ -1897,6 +1910,12 @@ void Estimator::outliersRejection(set<int> &removeIndex)
     //return;
     int feature_index = -1;
     // 遍历特征点
+    //fix:双目光流
+    //计算特征点所有的观测投影误差:
+    //起点是左目,观测点是左目,(ok)
+    //起点是左目,观测点是右目,(ok)
+    //起点是右目,观测点是左目,(not)
+    //起点是右目,观测点是右目,(not)
     for (auto &it_per_id : f_manager.feature)
     {
         double err = 0;

@@ -122,6 +122,7 @@ class IntegrationBase
                 -a_1_x(1), a_1_x(0), 0;
 
             // 当前时刻误差对前一时刻误差的微分
+            // (dp, dq, dv, dba, dbg)
             MatrixXd F = MatrixXd::Zero(15, 15);
             F.block<3, 3>(0, 0) = Matrix3d::Identity();
             F.block<3, 3>(0, 3) = -0.25 * delta_q.toRotationMatrix() * R_a_0_x * _dt * _dt + 
@@ -141,6 +142,7 @@ class IntegrationBase
             //cout<<"A"<<endl<<A<<endl;
 
             // 当前误差对噪声的微分
+            // (na_k, ng_k, na_k+1, ng_k+1, )
             MatrixXd V = MatrixXd::Zero(15,18);
             V.block<3, 3>(0, 0) =  0.25 * delta_q.toRotationMatrix() * _dt * _dt;
             V.block<3, 3>(0, 3) =  0.25 * -result_delta_q.toRotationMatrix() * R_a_1_x  * _dt * _dt * 0.5 * _dt;
